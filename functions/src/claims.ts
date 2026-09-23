@@ -1,4 +1,3 @@
-import type { Auth } from 'firebase-admin/auth';
 import { getAdminAuth } from './adminApp';
 
 /**

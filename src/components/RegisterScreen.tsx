@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { signUpWithUdise } from '../auth/authService';
+import {
+  registerSchoolWithBackend,
+  formatRegistrationError,
+  type FormattedRegistrationError,
+} from '../services/schoolRegistrationClient';
 import {
   UserPlus,
   AlertCircle,
@@ -10,11 +14,13 @@ import {
   CheckCircle2,
   Building2,
   Info,
+  ArrowRight,
+  LogIn,
 } from 'lucide-react';
 
 interface RegisterScreenProps {
   onSwitchToLogin: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (registeredUdise: string) => void;
 }
 
 export const RegisterScreen: React.FC<RegisterScreenProps> = ({
@@ -27,71 +33,49 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [formattedError, setFormattedError] = useState<FormattedRegistrationError | null>(null);
 
-  const formatFirebaseError = (error: any): string => {
-    const code = error?.code || '';
-    switch (code) {
-      case 'auth/udise-already-in-use':
-        return error?.message || 'This UDISE Code is already registered for another school.';
-      case 'auth/email-already-in-use':
-        return 'This Recovery Email is already in use by an existing account. Please sign in or use a different recovery email.';
-      case 'auth/invalid-email':
-        return 'Please enter a valid recovery email address.';
-      case 'auth/invalid-udise':
-        return error?.message || 'Please enter a valid numeric UDISE Code.';
-      case 'auth/invalid-school-name':
-        return 'Please enter the official name of your school.';
-      case 'auth/weak-password':
-        return 'Password is too weak. Please use at least 6 characters.';
-      case 'auth/operation-not-allowed':
-        return 'Authentication is not enabled in Firebase Authentication. Please check Firebase Console.';
-      case 'auth/network-request-failed':
-        return 'Network connection error. Please verify your internet connection.';
-      case 'auth/too-many-requests':
-        return 'Too many requests. Please try again in a few moments.';
-      default:
-        return error?.message || 'Failed to create school account. Please try again.';
-    }
-  };
+  // Successful registration state
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [registeredSchool, setRegisteredSchool] = useState<{
+    udiseCode: string;
+    schoolName: string;
+  } | null>(null);
 
-  const validateForm = (): string | null => {
+  const validateClientInputs = (): string | null => {
     const trimmedUdise = udiseCode.trim();
     if (!trimmedUdise) {
-      return 'UDISE Code is required.';
+      return 'ইউডাইস কোড আবশ্যক। (UDISE Code is required.)';
     }
-    if (trimmedUdise.length < 8) {
-      return 'UDISE Code must be at least 8 digits (typically 11 digits).';
-    }
-    if (!/^\d+$/.test(trimmedUdise)) {
-      return 'UDISE Code must contain only numbers.';
+    if (trimmedUdise.length !== 11 || !/^\d{11}$/.test(trimmedUdise)) {
+      return 'ইউডাইস কোডটি অবশ্যই ১১-সংখ্যার সংখ্যাসূচক হতে হবে। (UDISE Code must be exactly 11 digits.)';
     }
 
     const trimmedSchoolName = schoolName.trim();
-    if (!trimmedSchoolName) {
-      return 'School Name is required.';
+    if (!trimmedSchoolName || trimmedSchoolName.length < 2) {
+      return 'বিদ্যালয়ের নাম আবশ্যক (কমপক্ষে ২টি অক্ষর)। (School Name is required.)';
     }
 
     const trimmedEmail = recoveryEmail.trim();
     if (!trimmedEmail) {
-      return 'Recovery Email is required for password recovery.';
+      return 'পাসওয়ার্ড রিকভারির জন্য রিকভারি ইমেল আবশ্যক। (Recovery Email is required.)';
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      return 'Please enter a valid email format for Recovery Email (e.g., teacher@school.edu.in).';
+      return 'অনুগ্রহ করে একটি সঠিক ইমেল অ্যাড্রেস দিন (e.g., teacher@school.gov.in)।';
     }
 
     if (!password) {
-      return 'Password is required.';
+      return 'পাসওয়ার্ড আবশ্যক। (Password is required.)';
     }
 
     if (password.length < 6) {
-      return 'Password must be at least 6 characters long.';
+      return 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে। (Password must be at least 6 characters.)';
     }
 
     if (password !== confirmPassword) {
-      return 'Passwords do not match. Please verify both password fields.';
+      return 'পাসওয়ার্ড দুটি মেলেনি। অনুগ্রহ করে নিশ্চিতকরণ পাসওয়ার্ড চেক করুন। (Passwords do not match.)';
     }
 
     return null;
@@ -100,33 +84,128 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const clientValidationError = validateForm();
-    if (clientValidationError) {
-      setErrorMessage(clientValidationError);
+    // Prevent duplicate submissions while in progress
+    if (loading) {
+      return;
+    }
+
+    // Client-side pre-validation
+    const clientErr = validateClientInputs();
+    if (clientErr) {
+      setFormattedError({
+        bengali: clientErr,
+        english: 'Please review and correct the highlighted field.',
+        code: 'VALIDATION_ERROR',
+        canRetrySafely: true,
+      });
       return;
     }
 
     setLoading(true);
-    setErrorMessage(null);
+    setFormattedError(null);
 
     try {
-      await signUpWithUdise({
+      // Dispatch registration payload to trusted server-side provisioning engine
+      const result = await registerSchoolWithBackend({
         udiseCode: udiseCode.trim(),
         schoolName: schoolName.trim(),
         recoveryEmail: recoveryEmail.trim(),
         password,
+        confirmPassword,
       });
 
-      // Firebase automatically signs in the user upon successful creation.
-      onSuccess?.();
+      if (result.success) {
+        setIsSuccess(true);
+        setRegisteredSchool({
+          udiseCode: result.udiseCode || udiseCode.trim(),
+          schoolName: schoolName.trim(),
+        });
+        onSuccess?.(result.udiseCode || udiseCode.trim());
+      } else {
+        const parsedError = formatRegistrationError({
+          code: result.code,
+          message: result.error,
+          rollbackExecuted: !result.canRetrySafely ? false : true,
+        });
+        setFormattedError(parsedError);
+      }
     } catch (err: any) {
-      console.error('School Registration failed:', err);
-      setErrorMessage(formatFirebaseError(err));
+      console.error('School registration submission failed:', err);
+      const parsedError = formatRegistrationError(err);
+      setFormattedError(parsedError);
     } finally {
       setLoading(false);
     }
   };
 
+  // SUCCESS SCREEN VIEW
+  if (isSuccess && registeredSchool) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-emerald-50/50 to-slate-200 flex flex-col justify-center items-center p-4">
+        <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-emerald-200 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-300">
+          <div className="bg-emerald-800 text-white px-6 py-6 text-center border-b border-emerald-900">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-emerald-600/90 flex items-center justify-center mb-3 shadow-lg text-white">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">বিদ্যালয় নিবন্ধন সম্পন্ন হয়েছে!</h1>
+            <p className="text-xs text-emerald-200 mt-1">School Registration Successfully Provisioned</p>
+          </div>
+
+          <div className="p-6 sm:p-8 space-y-6">
+            {/* School details pill */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-emerald-800 text-xs font-semibold uppercase tracking-wider mb-2">
+                <Building2 className="w-4 h-4" />
+                <span>নিবন্ধিত বিদ্যালয়ের বিবরণ • Registered School</span>
+              </div>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between border-b border-emerald-100 pb-1.5">
+                  <span className="text-slate-600">বিদ্যালয়ের নাম (School Name):</span>
+                  <span className="font-bold text-slate-800">{registeredSchool.schoolName}</span>
+                </div>
+                <div className="flex justify-between pt-0.5">
+                  <span className="text-slate-600">ইউডাইস কোড (UDISE Code):</span>
+                  <span className="font-mono font-bold text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded text-xs">
+                    {registeredSchool.udiseCode}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Login Instructions */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs text-slate-700">
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <p className="font-bold text-slate-900">কীভাবে লগইন করবেন? • How to Log In:</p>
+                  <p className="mt-1">
+                    ১. লগইন স্ক্রিনে আপনার <strong>১১-সংখ্যার ইউডাইস কোড ({registeredSchool.udiseCode})</strong> এবং <strong>পাসওয়ার্ড</strong> ব্যবহার করুন।
+                  </p>
+                  <p className="mt-1 text-slate-500">
+                    (Use your UDISE Code and Password to log in. The Recovery Email is never used for login.)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Proceed to Login Button */}
+            <button
+              type="button"
+              id="btn-proceed-to-login"
+              onClick={onSwitchToLogin}
+              className="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>লগইন স্ক্রিনে যান • Proceed to Sign In</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // STANDARD REGISTRATION FORM
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-emerald-50/40 to-slate-200 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden my-6">
@@ -156,12 +235,22 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             </p>
           </div>
 
-          {/* Error Banner */}
-          {errorMessage && (
+          {/* Formatted Error Banner */}
+          {formattedError && (
             <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 animate-in fade-in duration-200">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div className="flex-1 leading-relaxed font-medium">
-                {errorMessage}
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-1">
+                <div className="font-semibold text-rose-900 leading-snug">
+                  {formattedError.bengali}
+                </div>
+                <div className="text-rose-600 text-[11px] leading-relaxed">
+                  {formattedError.english}
+                </div>
+                {formattedError.canRetrySafely && (
+                  <div className="text-[10px] text-emerald-700 font-medium pt-0.5">
+                    ✓ আপনি বিবরণ সংশোধন করে নিরাপদে পুনরায় চেষ্টা করতে পারেন (You may retry safely).
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -183,6 +272,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                   id="register-udise"
                   type="text"
                   required
+                  maxLength={11}
                   value={udiseCode}
                   onChange={(e) => setUdiseCode(e.target.value.trim())}
                   placeholder="e.g. 19180100101"
@@ -244,14 +334,16 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                   autoComplete="email"
                   value={recoveryEmail}
                   onChange={(e) => setRecoveryEmail(e.target.value.trim())}
-                  placeholder="e.g. headteacher@school.edu.in"
+                  placeholder="e.g. headteacher@school.gov.in"
                   disabled={loading}
                   className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all disabled:opacity-60"
                 />
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">
                 <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>This email is NOT used for normal login; it is used only if you need to reset your password.</span>
+                <span>
+                  This email is NOT used for normal login; it is used solely if you ever need to reset your password.
+                </span>
               </div>
             </div>
 
@@ -318,7 +410,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>Registering School...</span>
+                    <span>বিদ্যালয় নিবন্ধন প্রক্রিয়াধীন... • Provisioning...</span>
                   </>
                 ) : (
                   <>

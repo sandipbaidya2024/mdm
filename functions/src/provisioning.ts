@@ -2,7 +2,6 @@ import {
   normalizeServerUdise,
   validateServerUdiseCode,
   setUserUdiseClaim,
-  type UdiseAuthClaim,
 } from './claims';
 import { getAdminAuth, getAdminFirestore } from './adminApp';
 

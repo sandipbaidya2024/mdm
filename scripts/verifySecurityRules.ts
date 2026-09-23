@@ -253,7 +253,9 @@ async function runSecurityRulesSuite() {
   }
 }
 
-runSecurityRulesSuite().catch((err) => {
-  console.error('Security rules test error:', err);
-  process.exit(1);
-});
+if (process.argv[1] && process.argv[1].endsWith('verifySecurityRules.ts')) {
+  runSecurityRulesSuite().catch((err) => {
+    console.error('Security rules test error:', err);
+    process.exit(1);
+  });
+}
