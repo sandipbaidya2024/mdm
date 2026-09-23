@@ -1,0 +1,6 @@
+{
+  "name": "Mid-Day Meal (MDM) Manager",
+  "description": "Mid-Day Meal management system for attendance, daily cooking cost, rice stock, allotments, and monthly registers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

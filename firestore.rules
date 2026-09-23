@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global authentication helper
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user possesses a verified custom token claim matching the UDISE Code
+    function hasUdiseClaim(udiseCode) {
+      return isAuthenticated() &&
+             'udiseCode' in request.auth.token &&
+             request.auth.token.udiseCode == udiseCode;
+    }
+
+    // Check if the authenticated user is the verified owner of this school document
+    function isDocumentOwner(udiseCode) {
+      return isAuthenticated() &&
+             resource != null &&
+             resource.data.udiseCode == udiseCode &&
+             (
+               ('authUid' in resource.data && resource.data.authUid == request.auth.uid) ||
+               hasUdiseClaim(udiseCode)
+             );
+    }
+
+    // Canonical School Document: schools/{udiseCode}
+    match /schools/{udiseCode} {
+
+      // 1. Read: Allowed ONLY if the user is authenticated and verified as the owner of this specific school document
+      allow get: if isDocumentOwner(udiseCode);
+
+      // Listing/querying across all schools is strictly prohibited
+      allow list: if false;
+
+      // 2. Creation: Strictly DENIED from arbitrary client requests.
+      // School document creation requires trusted backend provisioning (Firebase Admin SDK or Cloud Function)
+      // to securely bind ownership without relying on unverified client-supplied claims.
+      allow create: if false;
+
+      // 3. Update: Allowed ONLY for the verified school owner.
+      // Enforces strict immutability of the UDISE Code and doc ID binding.
+      allow update: if isDocumentOwner(udiseCode) &&
+                       // Payload UDISE must match the canonical document ID
+                       request.resource.data.udiseCode == udiseCode &&
+                       // Payload UDISE must not be altered from the existing stored UDISE
+                       request.resource.data.udiseCode == resource.data.udiseCode &&
+                       // Document ownership (authUid) cannot be hijacked or removed if present
+                       (!('authUid' in resource.data) || request.resource.data.authUid == resource.data.authUid);
+
+      // 4. Delete: Strictly prohibited; canonical school records are permanent
+      allow delete: if false;
+
+      // Operational subcollections (attendance, rice, transactions, reports) are not permitted yet
+      match /{allSubcollections=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // Default deny for all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+/* Dedicated Print Containers: invisible on screen, rendered on demand during print */
+#report-center-print-container,
+#monthly-register-print-container {
+  display: none;
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* When printing in active print mode:
+     Hide default app navigation, headers, footers, buttons, and screen views */
+  body.print-mode-active header,
+  body.print-mode-active nav,
+  body.print-mode-active footer,
+  body.print-mode-active button,
+  body.print-mode-active .no-print,
+  body.print-mode-active .monthly-sheet-screen-view {
+    display: none !important;
+  }
+
+  /* General print rules when printing default pages outside print modes */
+  body:not(.print-mode-active) header,
+  body:not(.print-mode-active) nav,
+  body:not(.print-mode-active) footer,
+  body:not(.print-mode-active) button,
+  body:not(.print-mode-active) .no-print {
+    display: none !important;
+  }
+
+  .print-container {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Dedicated Report Center Print Container */
+  #report-center-print-container {
+    display: none;
+  }
+
+  /* Dedicated Monthly Register Print Container */
+  #monthly-register-print-container {
+    display: none;
+  }
+
+  /* When in Report Center print mode, make the container visible */
+  body.print-mode-active:not(.print-mode-monthly-register) #report-center-print-container {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* When in Monthly Register print mode, make the monthly register container visible */
+  body.print-mode-monthly-register #monthly-register-print-container {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Target visibility for each print mode */
+  body.print-mode-cmda1 #print-section-cmda1 {
+    display: block !important;
+  }
+  body.print-mode-cmda1 #print-section-cmda2,
+  body.print-mode-cmda1 #print-section-pmmdcf1,
+  body.print-mode-cmda1 #print-section-pmmdcf2 {
+    display: none !important;
+  }
+
+  body.print-mode-cmda2 #print-section-cmda2 {
+    display: block !important;
+  }
+  body.print-mode-cmda2 #print-section-cmda1,
+  body.print-mode-cmda2 #print-section-pmmdcf1,
+  body.print-mode-cmda2 #print-section-pmmdcf2 {
+    display: none !important;
+  }
+
+  body.print-mode-pmmdcf1 #print-section-pmmdcf1 {
+    display: block !important;
+  }
+  body.print-mode-pmmdcf1 #print-section-cmda1,
+  body.print-mode-pmmdcf1 #print-section-cmda2,
+  body.print-mode-pmmdcf1 #print-section-pmmdcf2 {
+    display: none !important;
+  }
+
+  body.print-mode-pmmdcf2 #print-section-pmmdcf2 {
+    display: block !important;
+  }
+  body.print-mode-pmmdcf2 #print-section-cmda1,
+  body.print-mode-pmmdcf2 #print-section-cmda2,
+  body.print-mode-pmmdcf2 #print-section-pmmdcf1 {
+    display: none !important;
+  }
+
+  /* Print All mode: display all four sections */
+  body.print-mode-all #print-section-cmda1,
+  body.print-mode-all #print-section-cmda2,
+  body.print-mode-all #print-section-pmmdcf1,
+  body.print-mode-all #print-section-pmmdcf2 {
+    display: block !important;
+  }
+
+  /* Each report section formatted as a clean A4 page */
+  .report-print-page {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Page break after each report page except the last */
+  .report-print-page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  .report-print-page:last-child,
+  .report-print-page-last {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+}
